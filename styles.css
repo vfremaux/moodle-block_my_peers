@@ -1,21 +1,13 @@
 /* JR in moodle 2, a block's CSS file is named styles.css, not styles.php*/
-
-.block_tuteur {
-  font-size:0.6em;
-}
-
-img.block_my_peers {
-
-}
-
+/* 
 .block_my_peers span:after { 
  content:"";
 }
-
+ */
+ 
 .block_my_peers_header_group {
   text-align : center;
   font-weight : bold  ;
-
 }
 /*  added JR (copied from block_online_users) */
 
@@ -27,3 +19,17 @@ img.block_my_peers {
 
 .dir-rtl .block_my_peers .content .list li.listentry .user {float:right;}
 .dir-rtl .block_my_peers .content .list li.listentry .message {float:left;}
+
+/*optional by JR */
+.block_my_peers .footer {
+	text-align: left!important;
+}
+.block_my_peers hr.separator {
+    height: 1px;
+    margin: 0.2em 0;
+    padding: 0;
+    color: #666666;
+    background-color: #CCCCCC;
+    border: 0;
+}
+/*end optional by JR*/

@@ -27,6 +27,7 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Joseph Rézeau <joseph@rezeau.org> March 2012
  * changed editing interface display dropdown 'Yes/No' lists to checkboxes, for improved ergonomy
+ * changed config_role_to_display checkboxes to advanced checkboxes, to allow case where ALL checkboxes would be empty
  * added feature: disabling extra information parameters when config_admin_personal_info is unchecked
  * fixed typo in config_admin_personnal_info -> config_admin_personal_info
  * replaced display_un with more understandable display_username
@@ -36,12 +37,18 @@ defined('MOODLE_INTERNAL') || die();
  
 class block_my_peers_edit_form extends block_edit_form {
     protected function specific_definition($mform) {
-        global $CFG, $COURSE;
+        global $CFG, $COURSE, $DB, $SESSION;
+        $SESSION->block_my_peers->status = 'defined';
         
+        $this->block->status = 1;
         $context = get_context_instance(CONTEXT_COURSE, $COURSE->id);
-        // var_dump($context);exit;
-        $assignableroles = get_assignable_roles($context); 
-        
+        $assignableroles = get_assignable_roles($context);
+        // added JR so that teacher can choose viewer roles even if teacher role is not assignable at site level
+        if (has_capability('moodle/block:edit', $context)) {
+        	$assignableroles[3] = "Teacher";
+        }
+        ksort ($assignableroles);
+        // end JR
         $mform->addElement('header', 'configheader', get_string('pluginname', 'block_my_peers'));
         //$mform->addElement('html', get_string("config_instance_preamble", "block_my_peers"));
         //$mform->addElement('html', get_string("config_admin_title", "block_my_peers"));
@@ -50,6 +57,10 @@ class block_my_peers_edit_form extends block_edit_form {
         $mform->addElement('text', 'config_title', get_string('config_title', 'block_my_peers'), $this->block->get_param('title'));        
         $mform->addElement('editor', 'config_admin_blabla', get_string('config_admin_blabla', 'block_my_peers'), $this->block->get_param('admin_blabla'));
         $mform->setType('config_admin_blabla', PARAM_RAW);
+        
+        // first time edited JR
+        $mform->addElement('hidden', 'config_configured');
+        $mform->setDefault('config_configured', true);
         
         $mform->addElement('html', get_string("config_role_to_display", "block_my_peers"), $this->block->get_param('role_to_display'));
         $assignableroles2 = $assignableroles;
@@ -64,8 +75,16 @@ class block_my_peers_edit_form extends block_edit_form {
             $mform->addElement('html',"<tr><td>$role  </td>");
             foreach($assignableroles2 as $role2_id => $role2) {
                  $mform->addElement('html',"<td>");
-                $mform->addElement('checkbox', "config_role_to_display[$role_id][$role2_id]");
-                $mform->setDefault("config_role_to_display[$role_id][$role2_id]", (isset($this->block->config->role_to_display[$role_id][$role2_id])?true:''));
+                 // JR changed checkbox to advcheckbox for case where no single box is checked
+                $mform->addElement('advcheckbox', "config_role_to_display[$role_id][$role2_id]", '', '',
+        			array('group' => 1), array(0, 1));
+                // JR changed setDefault system for advanced checkboxes!
+                if (isset($this->block->config->role_to_display[$role_id][$role2_id])) {
+                	$mform->setDefault("config_role_to_display[$role_id][$role2_id]", $this->block->config->role_to_display[$role_id][$role2_id]);
+                } else {
+                	$mform->setDefault("config_role_to_display[$role_id][$role2_id]", 0);
+                } 
+                
                 $mform->addElement('html',"</td>");
             }
             $mform->addElement('html', "</tr>\n");
@@ -76,22 +95,14 @@ class block_my_peers_edit_form extends block_edit_form {
         		array('group' => 1), array(0, 1));
         $mform->setDefault('config_admin_by_group', $this->block->get_param('admin_by_group'));
         
-        $yesnoonly = array( 0 => get_string( 'no' ), 1 => get_string( 'yes' ), 2 => get_string( 'only', 'block_my_peers' ) );
-        $biglittle = array( 16 => get_string( 'reallylittle', 'block_my_peers'),36 => get_string( 'little', 'block_my_peers'), 50 => get_string( 'notsobig', 'block_my_peers'), 100 => get_string( 'big', 'block_my_peers'));
-        
-        //$mform->addElement('select', 'config_admin_photo', get_string('config_admin_photo', 'block_my_peers'), $yesnoonly, $this->block->get_param('admin_photo'));
-        $mform->addElement('advcheckbox', 'config_admin_photo', '', ' '.get_string('config_admin_photo', 'block_my_peers'),
-        		array('group' => 1), array(0, 1));
-        $mform->setDefault('config_admin_photo', $this->block->get_param('admin_photo'));
-        
+        $display_participant = array( 0 => get_string( 'name' ), 1 => get_string( 'pictureofuser' ), 2 => get_string( 'nameandpicture', 'block_my_peers' ) );       
+        $mform->addElement('select', 'config_admin_display_participant', get_string('config_admin_display_participant', 'block_my_peers'), 
+			$display_participant, $this->block->get_param('admin_display_participant'));
+
+		$biglittle = array( 16 => get_string( 'reallylittle', 'block_my_peers'),36 => get_string( 'little', 'block_my_peers'), 50 => get_string( 'notsobig', 'block_my_peers'), 100 => get_string( 'big', 'block_my_peers'));
         $mform->addElement('select', 'config_admin_photo_size', get_string('config_admin_photo_size', 'block_my_peers'), $biglittle, $this->block->get_param('admin_photo_size'));
         $mform->setDefault('config_admin_photo_size', $this->block->get_param('admin_photo_size'));
-        $mform->disabledIf('config_admin_photo_size', 'config_admin_photo');
-        
-        
-        $mform->addElement('advcheckbox', 'config_display_username', '', ' '.get_string('display_un', 'block_myprofile'),
-        		array('group' => 1), array(0, 1));
-        $mform->setDefault('config_display_username', $this->block->get_param('display_username'));
+        $mform->disabledIf('config_admin_photo_size', 'config_admin_display_participant', 'eq', 0);
         
         $mform->addElement('advcheckbox', 'config_admin_display_role', '', ' '.get_string('config_admin_display_role', 'block_my_peers'),
         		array('group' => 1), array(0, 1));
@@ -169,5 +180,7 @@ class block_my_peers_edit_form extends block_edit_form {
         $mform->addElement('advcheckbox', 'config_display_lastip','', ' '.get_string('display_lastip', 'block_myprofile'),
         		array('group' => 1), array(0, 1));
         $mform->disabledIf('config_display_lastip', 'config_admin_personal_info');
+        
+        
     }
 }

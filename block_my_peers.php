@@ -27,14 +27,15 @@
 */
 
 /**
- * Joseph Rézeau <joseph@rezeau.org> March 2012
+ * Joseph Rézeau <joseph@rezeau.org> March-April 2012
  * fixed typo in config_admin_personnal_info -> config_admin_personal_info
  * replaced display_un with more understandable display_username
  * activated feature $CFG->block_my_peers_timetosee
- * set default_param->admin_photo_size = 50
+ * set default_param->admin_photo_size = 16 (very small, as in block Online users)
  * moved function my_peers_profile_display_fields($userid) from lib_my_peers.php to block_my_peers.php file
  * ... and removed lib_my_peers.php which is now apparently useless
- * removed 2 files which are no longer used in Moodle 2: config_global.html and config_instance.html 
+ * removed 2 files which are no longer used in Moodle 2: config_global.html and config_instance.html
+ * added message to teacher when block has not yet been configured 
  */
 
 // no longer needed
@@ -47,18 +48,24 @@ class block_my_peers extends block_base {
     function init() {
 
         global $COURSE, $CFG;
-
+        
+        // JR
+        
+        
         /// JR note: those default settings with a value of zero (0) are not used in the edit_form
-
-        $this->default_param->title = $this->title = get_string('pluginname', 'block_my_peers');
+		
+        // block has not yet been configured
+		$this->default_param->configured = false;
+		
+     	$this->default_param->title = $this->title = get_string('pluginname', 'block_my_peers');
 
         $this->default_param->admin_title = '';
         $this->default_param->admin_blabla = array('text'=>'','format'=>2);
         $this->default_param->admin_display_role = 1;
         $this->default_param->admin_by_group = 1;
         $this->default_param->admin_personal_info = 0;
-        $this->default_param->admin_photo = 1;
-        $this->default_param->admin_photo_size = 50; // medium
+        $this->default_param->admin_display_participant = 0;
+        $this->default_param->admin_photo_size = 16; // very small
         $this->default_param->display_username  = 1;
         $this->default_param->display_country   = 0;
         $this->default_param->display_city  = 0;
@@ -77,8 +84,8 @@ class block_my_peers extends block_base {
         $this->default_param->display_lastaccess  = 0;
         $this->default_param->display_currentlogin  = 0;
         $this->default_param->display_lastip  = 0;
-
-        $this->default_param->role_to_display = array('5' => array( '2' => true, '3' => true, '4' => true));
+		// JR all roles to display should be set to false by default
+        $this->default_param->role_to_display = array('5' => array( '2' => false, '3' => false, '4' => false));
 
         // var_dump($COURSE);
         /*if (isset($COURSE->defaultrole)) {
@@ -143,7 +150,7 @@ $defaultrole = $CFG->defaultcourseroleid;
     }
 
     /**
-* This function display persons with role wanted wich belong the group with the $group identifiant
+* This function displays persons with role wanted which belong to the group with the $group identifier
 * If $group is false, display all persons with role wanted.
 * Return an array of user object
 */
@@ -170,7 +177,7 @@ $defaultrole = $CFG->defaultcourseroleid;
         
         $userroles = array();
 
-        // Verification if there is a role switching to use an other role that the current role
+        // Verification if there is a role switching to use an other role than the current role
         if ($switchrole > 0) {
             $userrole = $DB->get_record('role', array('id'=>$switchrole));
             //role_switch($switchrole, $coursecontext);
@@ -181,36 +188,45 @@ $defaultrole = $CFG->defaultcourseroleid;
         }
         
         // make sure user can view this user's profile
-        $details = true;
+        // condition removed by JR, useless in this block's context
+        /* $details = true;
         if ( !has_capability('moodle/user:viewdetails', $coursecontext)
                 || !has_capability('moodle/user:viewdetails', $usercontext)) {
             $details = false;
-        }
+        } */
 
         $rolesids = array();
+        // added JR to add imagealt field
+        $fields = 'u.id, u.confirmed, u.username, u.firstname, u.lastname, '.
+        		'u.maildisplay, u.mailformat, u.maildigest, u.email, u.emailstop, u.city, '.
+        		'u.country, u.picture, u.idnumber, u.department, u.institution, u.imagealt, '.
+        		'u.lang, u.timezone, u.lastaccess, u.mnethostid, r.name AS rolename, r.sortorder';
+         
         // Search for each role of the current user, persons we have to display
         foreach ($userroles as $userrole) {
             if (! empty($roles_to_display[$userrole->roleid])) {
-                
                 foreach ($roles_to_display[$userrole->roleid] as $roleid => $tps) {
-                    $persons_tmp = array();
-                    if ($group ) {
-                        $persons_tmp = get_role_users($roleid, $coursecontext, true, '', 'u.lastname ASC', false, $group->id);
-                    } else {
-                        $persons_tmp = get_role_users($roleid, $coursecontext, true, '', 'u.lastname ASC', false);
-                    }
-                    if (! empty($persons_tmp)) {
-                        foreach ($persons_tmp as $ptp) {
-                            $rolename = role_fix_names(array($ptp->roleid => $ptp->rolename), $coursecontext);
-                            if(! isset($persons[$ptp->id]) ){
-                                $persons[$ptp->id] = $ptp;
-                                $persons[$ptp->id]->rolename = $rolename[$ptp->roleid];
-                            } else {
-                                $persons[$ptp->id]->rolename .= ', '.$rolename[$ptp->roleid];
-                            }
-
-                        }
-                    }
+                	// JR if role to display is checked
+                	if ($tps) {
+	                    $persons_tmp = array();
+	                    if ($group ) {
+	                        $persons_tmp = get_role_users($roleid, $coursecontext, true, $fields, 'u.lastname ASC', false, $group->id);
+	                    } else {
+	                        $persons_tmp = get_role_users($roleid, $coursecontext, true, $fields, 'u.lastname ASC', false);
+	                    }
+	                    if (! empty($persons_tmp)) {
+	                        foreach ($persons_tmp as $ptp) {
+	                            $rolename = role_fix_names(array($ptp->roleid => $ptp->rolename), $coursecontext);
+	                            if(! isset($persons[$ptp->id]) ){
+	                                $persons[$ptp->id] = $ptp;
+	                                $persons[$ptp->id]->rolename = $rolename[$ptp->roleid];
+	                            } else {
+	                                $persons[$ptp->id]->rolename .= ', '.$rolename[$ptp->roleid];
+	                            }
+	
+	                        }
+	                    }
+                	}
                 }
             }
         }
@@ -218,12 +234,12 @@ $defaultrole = $CFG->defaultcourseroleid;
         // Display
 
         $text = '';
-
         
         if(!empty($persons)) {
 
             // creation of the list of id to have no double
             $list_id = array();
+            $text .= "<ul class='list'>\n";
             foreach ($persons as $person) {
                 if ($person->id == $USER->id) {
                     continue;
@@ -235,53 +251,49 @@ $defaultrole = $CFG->defaultcourseroleid;
                 } else {
                     $list_id[$person->id]=true;
                 }
-
-                if ( $this->get_param('admin_photo') < 2 ) {
-                    $text .= "<div>";
-                }
                 
-                // JR workaround to prevent moodle notice "Missing imagealt property in $user object, etc."
-                // a better solution should be found 
-                $person->imagealt = '';
+                // JR workaround to prevent moodle notice "Missing imagealt property in $user object, etc." 
+                if (!$person->imagealt) {
+                	$person->imagealt = fullname($person);
+                }
                 // end JR
-                
-                if ($this->get_param('admin_photo')) {
-                        $text .= $OUTPUT->user_picture($person, 
-                        array('courseid' => $COURSE->id, 
-                                'size' => $this->get_param('admin_photo_size'),
-                                'class' => 'my_peers_picture'
-                        )
-                    );
-                }
-                if ( $this->get_param('admin_photo') == 2 ) {
-                    continue;
-                }
-                if ($this->get_param('display_username')){
-                    if ($details) {
-                        /* $text .= '<strong><a href="'.$CFG->wwwroot.'/user/view.php?id='.$person->id.'&amp;course='.
-                        $COURSE->id.'">'.fullname($person).'</a></strong>'; */
-                        
-                        $text .= '<div class="myprofileitem fullname">'.fullname($person).'</div>';
-                        
-                    } else {
-                        //$text .= '<strong>'.fullname($person).'</strong>';
-                        $text .= '<div class="myprofileitem fullname">'.fullname($person).'</div>';
-                    }
-                }
-                $role = '';
-                if ($this->get_param('admin_display_role')) {
-                    //$role = get_user_roles_in_context($person->id, $coursecontext);
-                    $role = $person->rolename;
-                }
-                $text .= ' '.'<a title="'.get_string('messageselectadd').'" target="message_'.
+
+                $text .= '<li class="listentry">';
+                $displayparticipant = $this->get_param('admin_display_participant');
+                // 0 : username only
+                // 1 : picture only
+                // 2 : username AND picture
+				$text .= '<div class="user">';
+	            if ($displayparticipant > 0) {
+					$text .= $OUTPUT->user_picture($person, 
+	                	array('courseid' => $COURSE->id, 
+	                    	'size' => $this->get_param('admin_photo_size'),
+	                        'class' => 'my_peers_picture'
+						)
+					);
+	            }
+				if ($displayparticipant != 1){
+					$text .= '&nbsp;<a href="'.$CFG->wwwroot.'/user/view.php?id='.$person->id.'&amp;course='.
+	                	$COURSE->id.'">'.fullname($person).'</a>';
+				}
+				$text .= '</div>';
+
+                $text .= '<div class="message">'.'<a title="'.get_string('messageselectadd').'" target="message_'.
                 $person->id.'" href="'.$CFG->wwwroot.'/message/discussion.php?id='.
                 $person->id.'" onclick="return openpopup(\'/message/discussion.php?id='.
                 $person->id.'\', \'message_'.$person->id.
-                '\', \'menubar=0, location=0, scrollbars, status, resizable, width=400, height=500\', 0);">'.
-                '<img class="icon message" src="'.$OUTPUT->pix_url('/t/message').'" alt="'.
-                get_string('messageselectadd') .'" /></a><br />'.$role.' ';
-                $text .= "</div>";
-
+                	'\', \'menubar=0, location=0, scrollbars, status, resizable, width=400, height=500\', 0);">'.
+                	'<img class="iconsmall" src="'.$OUTPUT->pix_url('/t/message').'" alt="'.
+                	get_string('messageselectadd') .'" /></a>';
+                $text .= "</div></li>";
+                
+                $text .= '<div class="clearer"><!-- --></div>';
+                
+                $role = '';
+                if ($this->get_param('admin_display_role')) {
+                	$role = $person->rolename;
+                }
+                $text .= $role;
                 if ($this->get_param('admin_personal_info')) {
 
                     if (! $user = $DB->get_record("user", array("id" =>$person->id))) {
@@ -306,7 +318,7 @@ $defaultrole = $CFG->defaultcourseroleid;
                     }
 
                     if (! isset($hiddenfields['city']) && $user->city && $this->get_param('display_city')) {
-                         $text .= '<div>'.s($user->city);
+                         $text .= '<div>'.s($user->city).'</div>';
                     }
 
                     if (has_capability('moodle/user:viewhiddendetails', $coursecontext)) {
@@ -373,25 +385,40 @@ $defaultrole = $CFG->defaultcourseroleid;
                     
                     $this->my_peers_profile_display_fields($user->id);
                 }
+                $text .= '<hr class="separator" />';
             }
-        } else {
-            // Do nothing : $text is empty;
+            $text .= '</ul><div class="clearer"><!-- --></div>';
         }
         return $text;
     }
 
     /**
-* This function construct and return the html content 
+* This function constructs and returns the html content 
 */
     function get_content() {
-        global $USER, $CFG, $COURSE;
-
+        global $USER, $CFG, $COURSE, $SESSION, $PAGE;
+        $editing = $PAGE->user_is_editing();
+        $hasbeenconfigured = $this->get_param('configured');
+        
         if ($this->content !== null) {
             return $this->content;
         }
         
         if (!isloggedin() or isguestuser()) {
             return '';      // Never useful unless you are logged in as real users
+        }
+        // added JR to display "not yet configured" message to teacher
+        $course = $this->page->course;
+        $context = get_context_instance(CONTEXT_COURSE, $course->id);
+
+        if (has_capability('moodle/block:edit', $context) && !$hasbeenconfigured ) {
+        	if ($editing) {
+        		$this->content->text   = get_string('notyetconfiguredediting','block_my_peers');
+        	} else {
+        		$this->content->text   = get_string('notyetconfigured','block_my_peers');
+        	}
+        	$this->content->footer = '';
+        	return $this->content;
         }
         
         $this->content = new stdClass;
@@ -401,6 +428,7 @@ $defaultrole = $CFG->defaultcourseroleid;
         if (empty($this->instance)) {
             return $this->content;
         }
+        $roles_to_display = $this->get_param('role_to_display');
 
         $groups = array();
 
@@ -434,22 +462,21 @@ $defaultrole = $CFG->defaultcourseroleid;
             foreach ($groups as $groupid => $group) {
                 $text_group = $this->get_and_display_persons($group);
                 if ($text_group) {
-                    $text .= '<hr /><a href="'.$CFG->wwwroot.'/user/index.php?id='.
-                    $COURSE->id.'&amp;group='.$group->id.'">'.$group->name.'</a><hr />'.$text_group;
+                    $text .= '<strong><a href="'.$CFG->wwwroot.'/user/index.php?id='.
+                    $COURSE->id.'&amp;group='.$group->id.'">'.$group->name.'</a></strong><br />&nbsp;'.$text_group.'<br />';
                 }
             }
         } else if (! $force_by_group) {
             $text .= $this->get_and_display_persons(false);
         }
+
         $this->content->text = $text ;
         
         // Footer is added only if there somebody to display
-        if ($text) {
-            
+        if ($text) {   
             $temp = $this->get_param('admin_blabla');
             $this->content->footer= format_text($temp['text'],$temp['format']);
         }
-        
 
         return $this->content;
     }
